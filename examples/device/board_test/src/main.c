@@ -61,6 +61,8 @@ int main(void) {
 
     // echo
     uint8_t ch;
+    // THIS HANGS UNTIL YOU TYPE A CHAR ON TM4C129 pretending to be a msp432e4..
+    // (I'm pretty sure this hangs on ~all boards that even implement board_uart_read... and that's not many...
     if (board_uart_read(&ch, 1) > 0) {
       board_uart_write(&ch, 1);
     }
