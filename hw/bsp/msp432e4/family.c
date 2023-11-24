@@ -172,11 +172,18 @@ uint32_t board_button_read(void)
 
 int board_uart_read(uint8_t * buf, int len)
 {
+#if 0
   for (int i = 0; i < len; ++i) {
     while (UART0->FR & UART_FR_RXFE) ;
     *buf++ = UART0->DR;
   }
   return len;
+#else
+  // this thing blocks, which isn't the intention of most of the apis that use this as best i can tell..
+  (void)buf;
+  (void)len;
+  return 0;
+#endif
 }
 
 int board_uart_write(void const * buf, int len)
