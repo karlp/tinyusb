@@ -18,6 +18,8 @@ EXAMPLE_SOURCE = \
   src/main.c \
   src/msc_app.c \
 
+CFLAGS_GCC += -Wno-error=maybe-uninitialized
+
 SRC_C += $(addprefix $(CURRENT_PATH)/, $(EXAMPLE_SOURCE))
 
 # FreeRTOS source, all files in port folder
