@@ -53,7 +53,7 @@ void led_blinking_task(void);
 void hid_task(void);
 
 /*------------- MAIN -------------*/
-int main(void)
+int tu_main(void)
 {
   board_init();
 
