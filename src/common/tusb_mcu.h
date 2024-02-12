@@ -112,6 +112,13 @@
   #define TUP_USBIP_CHIPIDEA_FS_KINETIS
   #define TUP_DCD_ENDPOINT_MAX    16
 
+#elif TU_CHECK_MCU(OPT_MCU_KINETIS_K)
+/* Parts have either KHCI (FS) or ECHI(HS) or both, with occasionalcrystalless FS */
+#define TUP_USBIP_CHIPIDEA_FS
+#define TUP_USBIP_CHIPIDEA_FS_KINETIS
+#define TUP_DCD_ENDPOINT_MAX 16
+#define TUP_USBIP_EHCI
+
 #elif TU_CHECK_MCU(OPT_MCU_MM32F327X)
   #define TUP_DCD_ENDPOINT_MAX    16
 
