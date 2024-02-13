@@ -37,9 +37,27 @@
 //--------------------------------------------------------------------+
 // Forward USB interrupt events to TinyUSB IRQ Handler
 //--------------------------------------------------------------------+
+#if CFG_TUD_ENABLED && defined(BOARD_TUD_RHPORT)
+#define PORT_SUPPORT_DEVICE(_n) (BOARD_TUD_RHPORT == _n)
+#else
+#define PORT_SUPPORT_DEVICE(_n) 0
+#endif
+
+#if CFG_TUH_ENABLED && defined(BOARD_TUH_RHPORT)
+#define PORT_SUPPORT_HOST(_n) (BOARD_TUH_RHPORT == _n)
+#else
+#define PORT_SUPPORT_HOST(_n) 0
+#endif
+
 void USB0_IRQHandler(void)
 {
+#if PORT_SUPPORT_HOST(0)
+  tuh_int_handler(0, true);
+#endif
+
+#if PORT_SUPPORT_DEVICE(0)
   tud_int_handler(0);
+#endif
 }
 
 void board_init(void)
