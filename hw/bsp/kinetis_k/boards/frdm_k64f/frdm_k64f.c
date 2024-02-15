@@ -1,0 +1,161 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2018, hathach (tinyusb.org)
+ * Copyright (c) 2020, Koji Kitayama
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * This file is part of the TinyUSB stack.
+ */
+
+#include "bsp/board_api.h"
+#include "board.h"
+#include "fsl_gpio.h"
+#include "fsl_port.h"
+#include "fsl_clock.h"
+#include "fsl_uart.h"
+
+#include "clock_config.h"
+
+//--------------------------------------------------------------------+
+// Forward USB interrupt events to TinyUSB IRQ Handler
+//--------------------------------------------------------------------+
+#if CFG_TUD_ENABLED && defined(BOARD_TUD_RHPORT)
+#define PORT_SUPPORT_DEVICE(_n) (BOARD_TUD_RHPORT == _n)
+#else
+#define PORT_SUPPORT_DEVICE(_n) 0
+#endif
+
+#if CFG_TUH_ENABLED && defined(BOARD_TUH_RHPORT)
+#define PORT_SUPPORT_HOST(_n) (BOARD_TUH_RHPORT == _n)
+#else
+#define PORT_SUPPORT_HOST(_n) 0
+#endif
+
+void USB0_IRQHandler(void)
+{
+#if PORT_SUPPORT_HOST(0)
+  tuh_int_handler(0, true);
+#endif
+
+#if PORT_SUPPORT_DEVICE(0)
+  tud_int_handler(0);
+#endif
+}
+
+void board_init(void)
+{
+  /* Enable port clocks for UART/LED/Button pins */
+  CLOCK_EnableClock(UART_PIN_CLOCK);
+  CLOCK_EnableClock(LED_PIN_CLOCK);
+  CLOCK_EnableClock(BUTTON_PIN_CLOCK);
+
+  gpio_pin_config_t led_config = {kGPIO_DigitalOutput, 0};
+  GPIO_PinInit(LED_GPIO, LED_PIN, &led_config);
+  PORT_SetPinMux(LED_PORT, LED_PIN, kPORT_MuxAsGpio);
+
+  gpio_pin_config_t button_config = {kGPIO_DigitalInput, 0};
+  GPIO_PinInit(BUTTON_GPIO, BUTTON_PIN, &button_config);
+  const port_pin_config_t BUTTON_CFG = {
+      .pullSelect = kPORT_PullUp,
+      .slewRate = kPORT_FastSlewRate,
+      .passiveFilterEnable = kPORT_PassiveFilterDisable,
+      .driveStrength = kPORT_LowDriveStrength,
+      .mux = kPORT_MuxAsGpio,
+  };
+  PORT_SetPinConfig(BUTTON_PORT, BUTTON_PIN, &BUTTON_CFG);
+
+  // Careful, uart muxes aren't always alt3!
+  PORT_SetPinMux(UART_PIN_PORT, UART_PIN_RX, kPORT_MuxAlt3);
+  PORT_SetPinMux(UART_PIN_PORT, UART_PIN_TX, kPORT_MuxAlt3);
+
+  // Ensure "plain" UART0 connection.
+  SIM->SOPT5 &= ~(SIM_SOPT5_UART0TXSRC_MASK | SIM_SOPT5_UART0RXSRC_MASK);
+
+  // BOARD_BootClockRUN();
+  BOARD_InitBootClocks();
+  SystemCoreClockUpdate();
+  //CLOCK_
+  //CLOCK_SetUart0Clock(1); // KARL - chekc?
+
+#if CFG_TUSB_OS == OPT_OS_NONE
+  // 1ms tick timer
+  SysTick_Config(SystemCoreClock / 1000);
+#elif CFG_TUSB_OS == OPT_OS_FREERTOS
+  // If freeRTOS is used, IRQ priority is limit by max syscall ( smaller is higher )
+  NVIC_SetPriority(USB0_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY);
+#endif
+
+  uart_config_t uart_config;
+  UART_GetDefaultConfig(&uart_config);
+  uart_config.baudRate_Bps = CFG_BOARD_UART_BAUDRATE;
+  uart_config.enableTx = true;
+  uart_config.enableRx = true;
+  UART_Init(UART_PORT, &uart_config, CLOCK_GetFreq(kCLOCK_McgIrc48MClk));
+
+  // USB
+  // KARL lol, doublecheck, yes... handled elsewhere..
+  // CLOCK_EnableUsbfs0Clock(kCLOCK_UsbSrcIrc48M, 48000000U);
+  TU_LOG1("Running sys clock: %lu\n", SystemCoreClock);
+  TU_LOG1("SIM sopt2: %lx, scgc4: %lx, clkdiv2: %lx\n", SIM->SOPT2, SIM->SCGC4, SIM->CLKDIV2);
+  TU_LOG1("MCG c1: %x, c2: %x, c5: %x, c6: %x\n", MCG->C1, MCG->C2, MCG->C5, MCG->C6);
+
+  // Turn off the MPU so that the usb peripheral can access transfer buffers!
+  SYSMPU->CESR = 0;
+}
+
+//--------------------------------------------------------------------+
+// Board porting API
+//--------------------------------------------------------------------+
+
+void board_led_write(bool state)
+{
+  GPIO_PinWrite(LED_GPIO, LED_PIN, state ? LED_STATE_ON : (1 - LED_STATE_ON));
+}
+
+uint32_t board_button_read(void)
+{
+  return BUTTON_STATE_ACTIVE == GPIO_PinRead(BUTTON_GPIO, BUTTON_PIN);
+}
+
+int board_uart_read(uint8_t *buf, int len)
+{
+  UART_ReadBlocking(UART_PORT, buf, len);
+  return len;
+}
+
+int board_uart_write(void const *buf, int len)
+{
+  UART_WriteBlocking(UART_PORT, (uint8_t const *)buf, len);
+  return len;
+}
+
+#if CFG_TUSB_OS == OPT_OS_NONE
+volatile uint32_t system_ticks = 0;
+void SysTick_Handler(void)
+{
+  system_ticks++;
+}
+
+uint32_t board_millis(void)
+{
+  return system_ticks;
+}
+#endif
